@@ -1,0 +1,9 @@
+name: Facility
+version: '1.0-SNAPSHOT'
+main: com.kkauaon.facility.Facility
+api-version: '1.21'
+commands:
+  facility:
+    description: Inicia o jogo
+    usage: /facility
+    permission: facility.iniciar
