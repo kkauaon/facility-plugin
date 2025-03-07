@@ -15,6 +15,7 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Silverfish;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.CompassMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.potion.PotionEffect;
@@ -42,6 +43,8 @@ public class Game {
     private final List<Block> restore;
     private final List<BlockState> doorsOpened;
 
+    private final Map<UUID, ItemStack> freezerTrackers;
+
     private Axolotl rope;
     private PlayerInGame leashedPlayer;
 
@@ -62,6 +65,7 @@ public class Game {
         restore = new ArrayList<>();
         computers = new ArrayList<>();
         doorsOpened = new ArrayList<>();
+        freezerTrackers = new HashMap<>();
     }
 
     public List<BukkitRunnable> getRunnables() {
@@ -145,6 +149,7 @@ public class Game {
         runnables.clear();
         restore.clear();
         doorsOpened.clear();
+        freezerTrackers.clear();
         beast = null;
         hackedComputers = 0;
     }
@@ -270,7 +275,22 @@ public class Game {
         p.setCollidable(true);
         p.teleport(freezer.getLocations().getPlayerLocation());
 
+        freezer.setPlayer(players.get(p.getUniqueId()));
+
         players.get(p.getUniqueId()).startFreezing();
+
+        ItemStack tracker = new ItemStack(Material.COMPASS);
+        CompassMeta trackerMeta = (CompassMeta) tracker.getItemMeta();
+        trackerMeta.displayName(Component.text(p.getName() + " (Capturado)").color(TextColor.color(0x3DA2C4)));
+        trackerMeta.setLodestoneTracked(false);
+        trackerMeta.setLodestone(freezer.getLocations().getPlayerLocation().toBlockLocation());
+        tracker.setItemMeta(trackerMeta);
+
+        players.forEach((uuid, playerInGame) -> {
+            playerInGame.getPlayer().getInventory().addItem(tracker);
+        });
+
+        freezerTrackers.put(p.getUniqueId(), tracker);
 
         FreezeTimer timer = new FreezeTimer(players.get(p.getUniqueId()));
         runnables.add(timer);
@@ -629,10 +649,6 @@ public class Game {
         this.beast = beast;
     }
 
-    public BeastLoop getBeastLoop() {
-        return beastLoop;
-    }
-
     public PlayerInGame getLeashedPlayer() {
         return leashedPlayer;
     }
@@ -657,11 +673,7 @@ public class Game {
         return minComputersToExit;
     }
 
-    public boolean isCanBeastAbility() {
-        return canBeastAbility;
-    }
-
-    public void setCanBeastAbility(boolean canBeastAbility) {
-        this.canBeastAbility = canBeastAbility;
+    public Map<UUID, ItemStack> getFreezerTrackers() {
+        return freezerTrackers;
     }
 }

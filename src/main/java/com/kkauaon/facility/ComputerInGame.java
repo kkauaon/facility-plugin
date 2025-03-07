@@ -35,6 +35,8 @@ public class ComputerInGame {
 
     private ItemFrame itemFrame;
 
+    private double distanceToError = 10d;
+
     public ComputerInGame(ComputerLocation location) {
         this.playersHacking = new HashMap<>();
         this.location = location;
@@ -94,6 +96,8 @@ public class ComputerInGame {
 
         p.setComputerHacking(this);
         playersHacking.put(p.getPlayer().getUniqueId(), p);
+
+        distanceToError = Facility.getInstance().getServerConfig().getDouble("pc-hack-distance");
 
         HackLoop loop = new HackLoop();
         runnable = loop;
@@ -186,7 +190,7 @@ public class ComputerInGame {
                                 actionBarText
                         );
 
-                        if (playerInGame.getPlayer().getLocation().distanceSquared(location.getButtonLocation()) > 10) {
+                        if (playerInGame.getPlayer().getLocation().distanceSquared(location.getButtonLocation()) > distanceToError) {
                             error();
 
                             playerInGame.getPlayer().sendActionBar(

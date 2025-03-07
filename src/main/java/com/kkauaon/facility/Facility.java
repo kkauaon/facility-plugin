@@ -9,14 +9,18 @@ import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Pose;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityUnleashEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.player.*;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.map.MapCanvas;
 import org.bukkit.map.MapPalette;
 import org.bukkit.map.MapRenderer;
@@ -128,7 +132,8 @@ public final class Facility extends JavaPlugin implements Listener {
             e.setCancelled(true);
         }
 
-        if (game.isStarted() && game.checkPlayer(e.getPlayer()) && e.getItemDrop().getItemStack().getType() == Material.TRIAL_KEY) {
+        if (game.isStarted() && game.checkPlayer(e.getPlayer()) &&
+                (e.getItemDrop().getItemStack().getType() == Material.TRIAL_KEY || e.getItemDrop().getItemStack().getType() == Material.COMPASS)) {
             e.setCancelled(true);
         }
     }
@@ -151,6 +156,23 @@ public final class Facility extends JavaPlugin implements Listener {
     }*/
 
     @EventHandler
+    public void onSneak(PlayerToggleSneakEvent e) {
+        if (e.isSneaking()) {
+            if (game.isStarted() && !game.checkBeast(e.getPlayer())) {
+                e.getPlayer().setSneaking(false);
+                e.getPlayer().setPose(Pose.SWIMMING, true);
+            } else if (!game.isStarted()) {
+                e.getPlayer().setSneaking(false);
+                e.getPlayer().setPose(Pose.SWIMMING, true);
+            }
+        }else{
+            e.getPlayer().setSneaking(false);
+            e.getPlayer().setPose(Pose.STANDING);
+        }
+        e.setCancelled(true);
+    }
+
+    @EventHandler
     public void onJump(PlayerJumpEvent e) {
         if (game.isStarted() && game.checkBeast(e.getPlayer())) {
             e.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 40, 2));
@@ -158,8 +180,15 @@ public final class Facility extends JavaPlugin implements Listener {
     }
 
     @EventHandler
+    public void onDamage(EntityDamageEvent e) {
+        if (e.getCause() == EntityDamageEvent.DamageCause.FALL) e.setCancelled(true);
+    }
+
+    @EventHandler
     public void onHit(EntityDamageByEntityEvent e) {
-        if (game.isStarted() && e.getEntity() instanceof Player && e.getDamager() instanceof Player) {
+        if (!game.isStarted()) return;
+
+        if (e.getEntity() instanceof Player && e.getDamager() instanceof Player) {
             Player whoWasHit = (Player) e.getEntity();
             Player whoHit = (Player) e.getDamager();
 
@@ -180,6 +209,10 @@ public final class Facility extends JavaPlugin implements Listener {
             } else if (game.checkPlayer(whoHit) && game.checkPlayer(whoWasHit)) {
                 e.setCancelled(true);
             }
+        }
+
+        if (e.getEntity().getType() == EntityType.ITEM_FRAME) {
+            e.setCancelled(true);
         }
     }
 
@@ -221,8 +254,18 @@ public final class Facility extends JavaPlugin implements Listener {
                             playerInFreezer.getPlayer().setCollidable(true);
                             playerInFreezer.teleport(freezer.getLocations().getButtonLocation());
 
-                            freezer.setPlayer(null);
+                            ItemStack tracker = game.getFreezerTrackers().get(playerInFreezer.getUniqueId());
+
+                            if (tracker != null) {
+                                game.getPlayers().forEach((uuid, playerInGame) -> {
+                                    playerInGame.getPlayer().getInventory().removeItem(tracker);
+                                });
+
+                                game.getFreezerTrackers().remove(playerInFreezer.getUniqueId());
+                            }
+
                             freezer.getPlayer().stopFreezing();
+                            freezer.setPlayer(null);
 
                             return;
                         }
