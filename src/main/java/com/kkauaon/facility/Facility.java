@@ -17,6 +17,10 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityUnleashEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.player.*;
+import org.bukkit.map.MapCanvas;
+import org.bukkit.map.MapPalette;
+import org.bukkit.map.MapRenderer;
+import org.bukkit.map.MapView;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -47,6 +51,17 @@ public final class Facility extends JavaPlugin implements Listener {
             hidenameTeam = score.registerNewTeam("nhide");
             hidenameTeam.setOption(Team.Option.NAME_TAG_VISIBILITY, Team.OptionStatus.NEVER);
         }
+
+        if (!getConfig().contains("map")) {
+            MapView blueMap = Bukkit.createMap(Bukkit.getWorld("world"));
+            MapView redMap = Bukkit.createMap(Bukkit.getWorld("world"));
+            MapView greenMap = Bukkit.createMap(Bukkit.getWorld("world"));
+
+            config.set("map.blue", blueMap.getId());
+            config.set("map.red", redMap.getId());
+            config.set("map.green", greenMap.getId());
+            saveConfig();
+        }
     }
 
     @Override
@@ -59,10 +74,16 @@ public final class Facility extends JavaPlugin implements Listener {
 
         game.getFreezers().clear();
 
-        List<FreezerLocation> locs = Facility.getInstance().getFreezerList();
+        List<FreezerLocation> locs = getFreezerList();
         for (FreezerLocation loc : locs) {
-            getLogger().info("Freezer verified: " + Util.locationToString(loc.getButtonLocation()));
             game.getFreezers().add(new FreezerInGame(loc));
+        }
+
+        List<ComputerLocation> pclocs = getComputerList();
+        for (ComputerLocation loc : pclocs) {
+            ComputerInGame pc = new ComputerInGame(loc);
+            pc.generateFrame();
+            game.getComputers().add(pc);
         }
 
         for (Player p : onlinePlayers) {
@@ -102,6 +123,12 @@ public final class Facility extends JavaPlugin implements Listener {
     @EventHandler
     public void onDropItem(PlayerDropItemEvent e) {
         if (game.isStarted() && game.checkBeast(e.getPlayer()) && e.getItemDrop().getItemStack().getType() == Material.MACE) {
+            game.tryActivateBeastAbility();
+
+            e.setCancelled(true);
+        }
+
+        if (game.isStarted() && game.checkPlayer(e.getPlayer()) && e.getItemDrop().getItemStack().getType() == Material.TRIAL_KEY) {
             e.setCancelled(true);
         }
     }
@@ -175,6 +202,8 @@ public final class Facility extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onInteractOnBlock(PlayerInteractEvent e) {
+        if (!game.isStarted()) return;
+
         if (e.getAction() == Action.RIGHT_CLICK_BLOCK) {
             Block clicked = e.getClickedBlock();
 
@@ -184,6 +213,8 @@ public final class Facility extends JavaPlugin implements Listener {
                         if (game.checkBeast(e.getPlayer()) && game.getLeashedPlayer() != null && freezer.getPlayer() == null) {
                             // Caso: a besta captura um jogador e coloca-o para congelar.
                             game.freeze(freezer, game.getLeashedPlayer().getPlayer());
+
+                            return;
                         } else if (game.checkPlayer(e.getPlayer()) && freezer.getPlayer() != null && freezer.getPlayer().isFreezing() && freezer.getPlayer().getFrozenPercentage() < 100 && !game.getPlayers().get(e.getPlayer().getUniqueId()).isKnocked()) {
                             // Caso: um jogador quer resgatar alguém que está congelando.
                             Player playerInFreezer = freezer.getPlayer().getPlayer();
@@ -192,9 +223,28 @@ public final class Facility extends JavaPlugin implements Listener {
 
                             freezer.setPlayer(null);
                             freezer.getPlayer().stopFreezing();
+
+                            return;
                         }
                     }
                 }
+
+                PlayerInGame p = game.getPlayers().get(e.getPlayer().getUniqueId());
+
+                if (game.checkBeast(e.getPlayer())) return;
+                if (p.getComputerHacking() != null) return;
+                if (p.isKnocked() || p.isFreezing()) return;
+
+                for (ComputerInGame computer : game.getComputers()) {
+                    if (Util.locationToString(computer.getLocation().getButtonLocation()).equals(Util.locationToString(clicked.getLocation().toBlockLocation()))) {
+                        computer.startHacking(p);
+                    }
+                }
+            }
+
+            if (clicked != null && clicked.getType() == Material.IRON_DOOR && e.getPlayer().getInventory().getItemInMainHand().getType() == Material.TRIAL_KEY) {
+                PlayerInGame p = game.getPlayers().get(e.getPlayer().getUniqueId());
+                game.unlockDoor(p, clicked);
             }
         }
     }
@@ -249,6 +299,18 @@ public final class Facility extends JavaPlugin implements Listener {
                 String buttonLocation = config.getString("freezers." + key + ".button-location");
                 String playerLocation = config.getString("freezers." + key + ".player-location");
                 freezers.add(new FreezerLocation(Integer.parseInt(key), buttonLocation, playerLocation));
+            }
+        }
+        return freezers;
+    }
+
+    public List<ComputerLocation> getComputerList() {
+        List<ComputerLocation> freezers = new ArrayList<>();
+        if (config.contains("computers")) {
+            for (String key : config.getConfigurationSection("computers").getKeys(false)) {
+                String buttonLocation = config.getString("computers." + key + ".button-location");
+                String playerLocation = config.getString("computers." + key + ".screen-location");
+                freezers.add(new ComputerLocation(Integer.parseInt(key), buttonLocation, playerLocation));
             }
         }
         return freezers;

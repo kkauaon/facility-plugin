@@ -7,6 +7,7 @@ public class PlayerInGame {
     private boolean isKnocked;
     private boolean isFreezing;
     private int frozenPercentage;
+    private ComputerInGame computerHacking;
 
     public PlayerInGame(Player p) {
         player = p;
@@ -49,5 +50,13 @@ public class PlayerInGame {
 
     public void setKnocked(boolean knocked) {
         isKnocked = knocked;
+    }
+
+    public ComputerInGame getComputerHacking() {
+        return computerHacking;
+    }
+
+    public void setComputerHacking(ComputerInGame computerHacking) {
+        this.computerHacking = computerHacking;
     }
 }

@@ -1,5 +1,6 @@
 package com.kkauaon.facility;
 
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -8,6 +9,8 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+
+import java.util.Arrays;
 
 public class Iniciar implements CommandExecutor {
 
@@ -86,6 +89,49 @@ public class Iniciar implements CommandExecutor {
                 Facility.getInstance().saveConfig();
                 player.sendMessage("Freezer - player foi setado com sucesso!");
                 return true;
+            } else if (args[0].equalsIgnoreCase("setpcbutton")) {
+                int spawnNumber = Integer.parseInt(args[1]);
+                Block targetBlock = player.getTargetBlockExact(5);
+
+                if (targetBlock == null || !targetBlock.getType().name().endsWith("_BUTTON")) {
+                    player.sendMessage("Olhe para um botão para definir o PC.");
+                    return true;
+                }
+
+                Location loc = targetBlock.getLocation();
+                Facility.getInstance().getServerConfig().set("computers."+spawnNumber+".button-location", Util.locationToString(loc));
+                Facility.getInstance().saveConfig();
+                player.sendMessage("Computador - Botão foi setado com sucesso!");
+
+                return true;
+            } else if (args[0].equalsIgnoreCase("setpcscreen")) {
+                int spawnNumber = Integer.parseInt(args[1]);
+                Block targetBlock = player.getTargetBlockExact(5);
+
+                if (targetBlock == null) {
+                    player.sendMessage("Olhe para um bloco para definir o PC.");
+                    return true;
+                }
+
+                Location loc = targetBlock.getLocation();
+                Facility.getInstance().getServerConfig().set("computers."+spawnNumber+".screen-location", Util.locationToString(loc));
+                Facility.getInstance().saveConfig();
+                player.sendMessage("Computador - Tela foi setada com sucesso!");
+
+                return true;
+            } else if (args[0].equalsIgnoreCase("actionbar") && args.length > 1) {
+                player.sendActionBar(Component.text(String.join(" ", Arrays.copyOfRange(args, 1, args.length))));
+
+                Bukkit.getScheduler().runTaskLater(Facility.getInstance(), () -> {
+                    player.sendActionBar(Component.text());
+                }, 40L);
+            } else if (args[0].equalsIgnoreCase("setpchackdistance")) {
+                if (args.length > 1) {
+                    double distance = Double.parseDouble(args[1]);
+
+                    Facility.getInstance().getServerConfig().set("pc-hack-distance", distance);
+                    Facility.getInstance().saveConfig();
+                }
             }
         }
 

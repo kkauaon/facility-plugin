@@ -7,11 +7,15 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.*;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
+import org.bukkit.block.data.Openable;
+import org.bukkit.block.data.type.Door;
 import org.bukkit.entity.Axolotl;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Silverfish;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -21,10 +25,14 @@ import org.w3c.dom.Text;
 import java.util.*;
 
 public class Game {
+    private static int ABILITY_TIME = 4;
+
     private boolean started;
     private final Map<UUID, PlayerInGame> players;
 
     private final List<FreezerInGame> freezers;
+    private final List<ComputerInGame> computers;
+
     private PlayerInGame beast;
     private int hackedComputers;
     private final int minComputersToExit;
@@ -32,21 +40,32 @@ public class Game {
     private final List<BukkitRunnable> runnables;
 
     private final List<Block> restore;
+    private final List<BlockState> doorsOpened;
 
     private Axolotl rope;
     private PlayerInGame leashedPlayer;
 
     private GameLoop gameLoop;
+    private BeastLoop beastLoop;
+
+    private boolean canBeastAbility;
 
     public Game() {
         started = false;
+        canBeastAbility = true;
         players = new HashMap<>();
         beast = null;
         hackedComputers = 0;
-        minComputersToExit = 1;
+        minComputersToExit = 2;
         runnables = new ArrayList<>();
         freezers = new ArrayList<>();
         restore = new ArrayList<>();
+        computers = new ArrayList<>();
+        doorsOpened = new ArrayList<>();
+    }
+
+    public List<BukkitRunnable> getRunnables() {
+        return runnables;
     }
 
     public void prepareRope() {
@@ -87,6 +106,17 @@ public class Game {
         runnables.forEach(BukkitRunnable::cancel);
         restore.forEach(block -> block.setType(Material.AIR));
 
+        doorsOpened.forEach(bs -> {
+            Openable door = (Openable)bs.getBlockData();
+            door.setOpen(false);
+            bs.setBlockData(door);
+            bs.update();
+        });
+
+        computers.forEach(computerInGame -> {
+            if (computerInGame.getItemFrame() != null)
+                computerInGame.getItemFrame().remove();
+        });
 
         players.forEach((uuid, playerInGame) -> {
             Player p = playerInGame.getPlayer();
@@ -111,13 +141,20 @@ public class Game {
         started = false;
         players.clear();
         freezers.clear();
+        computers.clear();
         runnables.clear();
         restore.clear();
+        doorsOpened.clear();
         beast = null;
         hackedComputers = 0;
     }
 
     public void destroyRope() {
+        if (rope == null) {
+            leashedPlayer = null;
+            return;
+        }
+
         rope.setLeashHolder(null);
         rope.remove();
         leashedPlayer = null;
@@ -191,6 +228,11 @@ public class Game {
     public void beastHit(Player p) {
         PlayerInGame player = players.get(p.getUniqueId());
         player.setKnocked(true);
+
+        if (player.getComputerHacking() != null) {
+            player.getComputerHacking().error();
+        }
+
         p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 28 * 20, 5));
 
         players.forEach((uuid, playerInGame) -> playerInGame.getPlayer().spawnParticle(Particle.TOTEM_OF_UNDYING, p.getLocation(), 1) );
@@ -255,13 +297,186 @@ public class Game {
 
             gameLoop = new GameLoop();
             gameLoop.runTaskTimer(Facility.getInstance(), 0, 10L);
+
+            beastLoop = new BeastLoop(beast);
+            beastLoop.runTaskTimer(Facility.getInstance(), 0, 20L);
+
+            runnables.add(gameLoop);
+            runnables.add(beastLoop);
         }, 15 * 20L);
+    }
+
+    public List<ComputerInGame> getComputers() {
+        return computers;
+    }
+
+    public void addHackedComputer() {
+        hackedComputers += 1;
+
+        if (hackedComputers >= minComputersToExit) {
+            openExits();
+        }
+    }
+
+    public void openExits() {
+        players.forEach((uuid, playerInGame) -> {
+
+            Player p = playerInGame.getPlayer();
+            p.playSound(p.getLocation(), Sound.BLOCK_IRON_DOOR_OPEN, 1, 1);
+            p.sendActionBar(Component.text("Encontre a saída.").color(TextColor.color(0xE8A701)));
+
+            if (!checkBeast(p)) {
+                ItemStack chave = new ItemStack(Material.TRIAL_KEY);
+                chave.setAmount(1);
+
+                ItemMeta im = chave.getItemMeta();
+                im.displayName(Component.text("Chave da Saída"));
+
+                chave.setItemMeta(im);
+
+                p.getInventory().addItem(chave);
+            }
+        });
+    }
+
+    public void unlockDoor(PlayerInGame p, Block b) {
+        BlockState doorState = b.getState();
+        Openable openable = (Openable) doorState.getBlockData();
+
+        if (openable.isOpen() || p.isKnocked() || p.isFreezing() || p.getComputerHacking() != null) return;
+
+        UnlockLoop loop = new UnlockLoop(p, openable, doorState);
+        runnables.add(loop);
+        loop.runTaskTimer(Facility.getInstance(), 0, 10L);
+    }
+
+    public void tryActivateBeastAbility() {
+        if (beastLoop.ability > 30) {
+            beastLoop.ability = -1;
+            beast.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ABILITY_TIME * 20, 2));
+
+            Bukkit.getScheduler().runTaskLater(Facility.getInstance(), () -> {
+                beastLoop.ability = 0;
+            }, ABILITY_TIME * 20L);
+        }
     }
 
     private class GameLoop extends BukkitRunnable {
         @Override
         public void run() {
             scoreboardUpdate();
+        }
+    }
+
+    private class BeastLoop extends BukkitRunnable {
+        public int ability = 0;
+        private PlayerInGame beast;
+
+        public BeastLoop(PlayerInGame p) {
+            beast = p;
+        }
+
+        @Override
+        public void run() {
+            if (ability != -1) {
+                if (ability <= 30) {
+                    String symbol = "▋";
+                    int percentComplete = (int) Util.remap(ability, 0, 30, 0, 70);
+                    int percentLeft = 70 - percentComplete;
+
+                    Component actionBarText = Component
+                            .text()
+                            .append(
+                                    Component.text(symbol.repeat(percentComplete)).color(TextColor.color(0xE61C3E))
+                            )
+                            .append(
+                                    Component.text(symbol.repeat(percentLeft)).color(TextColor.color(0x2F3330))
+                            )
+                            .build();
+
+                    beast.getPlayer().sendActionBar(
+                            actionBarText
+                    );
+
+                    ability += 1;
+                } else {
+                    beast.getPlayer().sendActionBar(
+                            Component.text("Aperte Q para utilizar habilidade Corredor.").color(TextColor.color(0x32A852))
+                    );
+                }
+            } else {
+                beast.getPlayer().sendActionBar(
+                        Component.text("Habilidade em uso.").color(TextColor.color(0xE8A701))
+                );
+            }
+        }
+    }
+
+    private class UnlockLoop extends BukkitRunnable {
+        private PlayerInGame player;
+        private Openable door;
+        private BlockState block;
+        private int complete = 0;
+
+        public UnlockLoop(PlayerInGame p, Openable o, BlockState b) {
+            player = p;
+            door = o;
+            block = b;
+        }
+
+        @Override
+        public void run() {
+            if (complete <= 30) {
+                String symbol = "▋";
+                int percentComplete = (int) Util.remap(complete, 0, 30, 0, 70);
+                int percentLeft = 70 - percentComplete;
+
+                Component actionBarText = Component
+                        .text()
+                        .append(
+                                Component.text(symbol.repeat(percentComplete)).color(TextColor.color(0x32A852))
+                        )
+                        .append(
+                                Component.text(symbol.repeat(percentLeft)).color(TextColor.color(0x2F3330))
+                        )
+                        .build();
+
+                player.getPlayer().sendActionBar(
+                        actionBarText
+                );
+
+                if (player.getPlayer().getLocation().distanceSquared(block.getLocation()) > 10 || player.isKnocked() || player.isFreezing() || player.getComputerHacking() != null) {
+                    player.getPlayer().sendActionBar(
+                            Component
+                                    .text("Chegue mais perto para abrir a saída.")
+                                    .color(TextColor.color(0xE61C3E))
+                    );
+
+                    Bukkit.getScheduler().runTaskLater(Facility.getInstance(), () -> {
+                        player.getPlayer().sendActionBar(Component.text());
+                    }, 20L);
+
+                    runnables.remove(this);
+                    cancel();
+                }
+
+                complete += 1;
+            } else {
+                door.setOpen(true);
+                block.setBlockData(door);
+                block.update();
+
+                doorsOpened.add(block);
+
+                players.forEach((uuid, playerInGame) -> playerInGame.getPlayer().playSound(block.getBlock().getLocation(), Sound.BLOCK_IRON_DOOR_OPEN, 1,1));
+
+                Bukkit.getScheduler().runTaskLater(Facility.getInstance(), () -> {
+                    player.getPlayer().sendActionBar(Component.text());
+                }, 20L);
+
+                runnables.remove(this);
+                cancel();
+            }
         }
     }
 
@@ -309,7 +524,7 @@ public class Game {
             if (secondsLeft <= 0) {
                 player.getPlayer().sendActionBar(
                         Component.text()
-                                .content("Liberado")
+                                .content("Liberado.")
                                 .color(TextColor.color(0x69E801))
                 );
 
@@ -332,7 +547,7 @@ public class Game {
 
                 player.getPlayer().sendActionBar(
                         Component.text()
-                                .content("" + secondsLeft + " segundos para ser liberado")
+                                .content("" + secondsLeft + " segundos para ser liberado.")
                                 .color(TextColor.color(0xE8A701))
                 );
             }
@@ -414,6 +629,10 @@ public class Game {
         this.beast = beast;
     }
 
+    public BeastLoop getBeastLoop() {
+        return beastLoop;
+    }
+
     public PlayerInGame getLeashedPlayer() {
         return leashedPlayer;
     }
@@ -436,5 +655,13 @@ public class Game {
 
     public int getMinComputersToExit() {
         return minComputersToExit;
+    }
+
+    public boolean isCanBeastAbility() {
+        return canBeastAbility;
+    }
+
+    public void setCanBeastAbility(boolean canBeastAbility) {
+        this.canBeastAbility = canBeastAbility;
     }
 }
