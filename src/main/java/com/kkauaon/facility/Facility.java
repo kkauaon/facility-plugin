@@ -19,6 +19,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityUnleashEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.hanging.HangingBreakByEntityEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.map.MapCanvas;
@@ -176,7 +177,8 @@ public final class Facility extends JavaPlugin implements Listener {
     @EventHandler
     public void onJump(PlayerJumpEvent e) {
         if (game.isStarted() && game.checkBeast(e.getPlayer())) {
-            e.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 40, 2));
+            if (game.isBeastUsingAbility()) e.setCancelled(true);
+            else e.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 40, 2));
         }
     }
 
@@ -332,6 +334,11 @@ public final class Facility extends JavaPlugin implements Listener {
     @EventHandler
     public void onHunger(FoodLevelChangeEvent e) {
         e.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onHangBreak(HangingBreakByEntityEvent e) {
+        if (game.isStarted()) e.setCancelled(true);
     }
 
     public Game getGame() {

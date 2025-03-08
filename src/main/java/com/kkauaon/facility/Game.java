@@ -32,6 +32,8 @@ public class Game {
     private final List<ComputerInGame> computers;
 
     private PlayerInGame beast;
+    private boolean beastUsingAbility;
+
     private int hackedComputers;
     private int minComputersToExit;
 
@@ -371,12 +373,13 @@ public class Game {
 
     public void tryActivateBeastAbility() {
         if (beastLoop != null && beastLoop.ability > 30) {
+            beastUsingAbility = true;
             beastLoop.ability = -1;
             beast.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ABILITY_TIME * 20, 2));
-            beast.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, ABILITY_TIME * 20, 255));
 
             Bukkit.getScheduler().runTaskLater(Facility.getInstance(), () -> {
                 beastLoop.ability = 0;
+                beastUsingAbility = false;
             }, ABILITY_TIME * 20L);
         }
     }
@@ -711,5 +714,13 @@ public class Game {
 
     public void setMinComputersToExit(int minComputersToExit) {
         this.minComputersToExit = minComputersToExit;
+    }
+
+    public boolean isBeastUsingAbility() {
+        return beastUsingAbility;
+    }
+
+    public void setBeastUsingAbility(boolean beastUsingAbility) {
+        this.beastUsingAbility = beastUsingAbility;
     }
 }
