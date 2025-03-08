@@ -131,6 +131,17 @@ public class Iniciar implements CommandExecutor {
 
                     Facility.getInstance().getServerConfig().set("pc-hack-distance", distance);
                     Facility.getInstance().saveConfig();
+
+                    player.sendMessage("Ok.");
+                }
+            } else if (args[0].equalsIgnoreCase("setpctohack")) {
+                if (args.length > 1) {
+                    int number = Integer.parseInt(args[1]);
+
+                    Facility.getInstance().getServerConfig().set("pc-to-hack", number);
+                    Facility.getInstance().saveConfig();
+
+                    player.sendMessage("Ok.");
                 }
             }
         }

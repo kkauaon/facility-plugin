@@ -6,6 +6,8 @@ public class PlayerInGame {
     private Player player;
     private boolean isKnocked;
     private boolean isFreezing;
+    private boolean dead;
+    private boolean escaped;
     private int frozenPercentage;
     private ComputerInGame computerHacking;
 
@@ -58,5 +60,21 @@ public class PlayerInGame {
 
     public void setComputerHacking(ComputerInGame computerHacking) {
         this.computerHacking = computerHacking;
+    }
+
+    public boolean isDead() {
+        return dead;
+    }
+
+    public void setDead(boolean dead) {
+        this.dead = dead;
+    }
+
+    public boolean isEscaped() {
+        return escaped;
+    }
+
+    public void setEscaped(boolean escaped) {
+        this.escaped = escaped;
     }
 }

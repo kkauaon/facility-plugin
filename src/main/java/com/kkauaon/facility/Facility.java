@@ -96,6 +96,7 @@ public final class Facility extends JavaPlugin implements Listener {
             hidenameTeam.addEntry(p.getName());
         }
 
+        game.setMinComputersToExit(getConfig().getInt("pc-to-hack"));
         game.prepareRope();
         game.chooseBeast(beastChosen);
         game.scoreboardSetup();
@@ -181,7 +182,7 @@ public final class Facility extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onDamage(EntityDamageEvent e) {
-        if (e.getCause() == EntityDamageEvent.DamageCause.FALL) e.setCancelled(true);
+        if (e.getCause() == EntityDamageEvent.DamageCause.FALL || e.getCause() == EntityDamageEvent.DamageCause.FREEZE) e.setCancelled(true);
     }
 
     @EventHandler
@@ -211,7 +212,7 @@ public final class Facility extends JavaPlugin implements Listener {
             }
         }
 
-        if (e.getEntity().getType() == EntityType.ITEM_FRAME) {
+        if (e.getEntity().getType() == EntityType.ITEM_FRAME || e.getEntity().getType() == EntityType.PAINTING) {
             e.setCancelled(true);
         }
     }
@@ -237,7 +238,9 @@ public final class Facility extends JavaPlugin implements Listener {
     public void onInteractOnBlock(PlayerInteractEvent e) {
         if (!game.isStarted()) return;
 
-        if (e.getAction() == Action.RIGHT_CLICK_BLOCK) {
+        PlayerInGame p = game.getPlayers().get(e.getPlayer().getUniqueId());
+
+        if (e.getAction() == Action.RIGHT_CLICK_BLOCK && p != null) {
             Block clicked = e.getClickedBlock();
 
             if (clicked != null && clicked.getType().name().endsWith("_BUTTON")) {
@@ -272,11 +275,10 @@ public final class Facility extends JavaPlugin implements Listener {
                     }
                 }
 
-                PlayerInGame p = game.getPlayers().get(e.getPlayer().getUniqueId());
-
+                // Caso: apertou um botão de computador
                 if (game.checkBeast(e.getPlayer())) return;
                 if (p.getComputerHacking() != null) return;
-                if (p.isKnocked() || p.isFreezing()) return;
+                if (p.isKnocked() || p.isFreezing() || p.isDead() || p.isEscaped()) return;
 
                 for (ComputerInGame computer : game.getComputers()) {
                     if (Util.locationToString(computer.getLocation().getButtonLocation()).equals(Util.locationToString(clicked.getLocation().toBlockLocation()))) {
@@ -286,9 +288,26 @@ public final class Facility extends JavaPlugin implements Listener {
             }
 
             if (clicked != null && clicked.getType() == Material.IRON_DOOR && e.getPlayer().getInventory().getItemInMainHand().getType() == Material.TRIAL_KEY) {
-                PlayerInGame p = game.getPlayers().get(e.getPlayer().getUniqueId());
                 game.unlockDoor(p, clicked);
             }
+        } else if (e.getAction() == Action.PHYSICAL &&
+                e.getClickedBlock().getType() == Material.TRIPWIRE &&
+                p != null &&
+                !p.isEscaped() &&
+                !p.isDead() &&
+                p.getComputerHacking() == null &&
+                !p.isFreezing() &&
+                !game.checkBeast(p.getPlayer()) &&
+                game.checkPlayer(p.getPlayer()) &&
+                game.getHackedComputers() >= game.getMinComputersToExit()
+        ) {
+            // Caso: alguém tocou no gancho de saída.
+            p.setEscaped(true);
+            p.getPlayer().setGameMode(GameMode.SPECTATOR);
+
+            game.getPlayers().forEach((uuid, playerInGame) -> playerInGame.getPlayer().sendTitle(p.getPlayer().getName(), "escapou"));
+
+            e.setCancelled(true);
         }
     }
 

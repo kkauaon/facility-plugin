@@ -10,10 +10,7 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.data.Openable;
 import org.bukkit.block.data.type.Door;
-import org.bukkit.entity.Axolotl;
-import org.bukkit.entity.EntityType;
-import org.bukkit.entity.Player;
-import org.bukkit.entity.Silverfish;
+import org.bukkit.entity.*;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.CompassMeta;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -36,7 +33,7 @@ public class Game {
 
     private PlayerInGame beast;
     private int hackedComputers;
-    private final int minComputersToExit;
+    private int minComputersToExit;
 
     private final List<BukkitRunnable> runnables;
 
@@ -45,17 +42,14 @@ public class Game {
 
     private final Map<UUID, ItemStack> freezerTrackers;
 
-    private Axolotl rope;
+    private Armadillo rope;
     private PlayerInGame leashedPlayer;
 
     private GameLoop gameLoop;
     private BeastLoop beastLoop;
 
-    private boolean canBeastAbility;
-
     public Game() {
         started = false;
-        canBeastAbility = true;
         players = new HashMap<>();
         beast = null;
         hackedComputers = 0;
@@ -73,7 +67,7 @@ public class Game {
     }
 
     public void prepareRope() {
-        Axolotl silverfish = (Axolotl) Bukkit.getWorld("world").spawnEntity(new Location(Bukkit.getWorld("world"), 0,0,0), EntityType.AXOLOTL);
+        Armadillo silverfish = (Armadillo) Bukkit.getWorld("world").spawnEntity(new Location(Bukkit.getWorld("world"), 0,0,0), EntityType.ARMADILLO);
         silverfish.setAI(true);
         silverfish.setCollidable(false);
         silverfish.setSilent(true);
@@ -82,7 +76,7 @@ public class Game {
         silverfish.setMetadata("leashEntity", new FixedMetadataValue(Facility.getInstance(), true));
         rope = silverfish;
         leashedPlayer = null;
-        Facility.getInstance().getLogger().info("Axolotl spawned!");
+        Facility.getInstance().getLogger().info("Rope entity spawned!");
     }
 
     public void chooseBeast() {
@@ -202,8 +196,13 @@ public class Game {
 
         players.forEach((uuid, playerInGame) -> {
             if (uuid != beast.getPlayer().getUniqueId()) {
+                Component playerName = Component.text(playerInGame.getPlayer().getName());
+
+                if (playerInGame.isDead()) playerName = playerName.color(TextColor.color(0,0,0));
+                else if (playerInGame.isEscaped()) playerName = playerName.color(TextColor.color(0x32A852));
+
                 lines.add(
-                        Component.text(playerInGame.getPlayer().getName()).color(TextColor.color(255, 255, 255))
+                        playerName
                 );
 
                 Component lifeLine = Component.text("❤ " + (100 - playerInGame.getFrozenPercentage()) + "%");
@@ -371,9 +370,10 @@ public class Game {
     }
 
     public void tryActivateBeastAbility() {
-        if (beastLoop.ability > 30) {
+        if (beastLoop != null && beastLoop.ability > 30) {
             beastLoop.ability = -1;
             beast.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ABILITY_TIME * 20, 2));
+            beast.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, ABILITY_TIME * 20, 255));
 
             Bukkit.getScheduler().runTaskLater(Facility.getInstance(), () -> {
                 beastLoop.ability = 0;
@@ -391,13 +391,38 @@ public class Game {
     private class BeastLoop extends BukkitRunnable {
         public int ability = 0;
         private PlayerInGame beast;
+        private Map<UUID, PlayerInGame> playersNotBeast;
 
         public BeastLoop(PlayerInGame p) {
             beast = p;
+
+            playersNotBeast = new HashMap<>();
+
+            players.forEach((uuid, playerInGame) -> {
+                if (!checkBeast(playerInGame.getPlayer())) {
+                    playersNotBeast.put(uuid, playerInGame);
+                }
+            });
         }
 
         @Override
         public void run() {
+            playersNotBeast.forEach((uuid, playerInGame) -> {
+                double distance = beast.getPlayer().getLocation().distanceSquared(playerInGame.getPlayer().getLocation());
+                float volume = (float) Util.remap(distance, 0, 120, 1, 0);
+
+                playerInGame.getPlayer().playSound(playerInGame.getPlayer().getLocation(), Sound.BLOCK_NOTE_BLOCK_BASEDRUM, volume, 1);
+            });
+
+            Bukkit.getScheduler().runTaskLater(Facility.getInstance(), () -> {
+                playersNotBeast.forEach((uuid, playerInGame) -> {
+                    double distance = beast.getPlayer().getLocation().distanceSquared(playerInGame.getPlayer().getLocation());
+                    float volume = (float) Util.remap(distance, 0, 120, 1, 0);
+
+                    playerInGame.getPlayer().playSound(playerInGame.getPlayer().getLocation(), Sound.BLOCK_NOTE_BLOCK_BASEDRUM, volume, 0.5f);
+                });
+            }, 5L);
+
             if (ability != -1) {
                 if (ability <= 30) {
                     String symbol = "▋";
@@ -596,6 +621,8 @@ public class Game {
                                 .color(TextColor.color(0x3DA2C4))
                 );
 
+                player.setDead(true);
+
                 players.forEach((uuid, playerInGame) -> playerInGame.getPlayer().sendTitle(player.getPlayer().getName(), "congelou"));
 
                 Block block1 = player.getPlayer().getLocation().getBlock();
@@ -614,8 +641,13 @@ public class Game {
                 runnables.remove(this);
                 this.cancel();
             } else {
-                player.getPlayer().setFreezeTicks(player.getPlayer().getMaxFreezeTicks());
-                player.setFrozenPercentage(player.getFrozenPercentage() + 1);
+                double distance = player.getPlayer().getLocation().distanceSquared(beast.getPlayer().getLocation());
+
+                if (distance > 80) {
+                    player.getPlayer().setFreezeTicks(player.getPlayer().getMaxFreezeTicks() + 20);
+                    player.setFrozenPercentage(player.getFrozenPercentage() + 1);
+                }
+
                 player.getPlayer().sendActionBar(
                         Component.text()
                                 .content("Estado de congelamento: " + player.getFrozenPercentage() + "%")
@@ -637,7 +669,7 @@ public class Game {
         this.started = started;
     }
 
-    public Axolotl getRope() {
+    public Armadillo getRope() {
         return rope;
     }
 
@@ -675,5 +707,9 @@ public class Game {
 
     public Map<UUID, ItemStack> getFreezerTrackers() {
         return freezerTrackers;
+    }
+
+    public void setMinComputersToExit(int minComputersToExit) {
+        this.minComputersToExit = minComputersToExit;
     }
 }

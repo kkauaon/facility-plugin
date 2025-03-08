@@ -2,3 +2,4 @@ lobby-location: ""
 player-spawn: ""
 beast-spawn: ""
 pc-hack-distance: 10
+pc-to-hack: 2
