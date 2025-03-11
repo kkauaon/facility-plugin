@@ -203,8 +203,7 @@ public final class Facility extends JavaPlugin implements Listener {
                 else {
                     if (game.getLeashedPlayer() != null) {
                         getLogger().info("Deroped at hit check.");
-                        game.setLeashedPlayer(null);
-                        game.getRope().setLeashHolder(null);
+                        game.destroyRope();
                     }
 
                     e.setCancelled(true);
@@ -250,14 +249,20 @@ public final class Facility extends JavaPlugin implements Listener {
                     if (Util.locationToString(freezer.getLocations().getButtonLocation()).equals(Util.locationToString(clicked.getLocation().toBlockLocation()))) {
                         if (game.checkBeast(e.getPlayer()) && game.getLeashedPlayer() != null && freezer.getPlayer() == null) {
                             // Caso: a besta captura um jogador e coloca-o para congelar.
+                            getLogger().info("Will freeze " + game.getLeashedPlayer().getPlayer().getName());
+
                             game.freeze(freezer, game.getLeashedPlayer().getPlayer());
 
                             return;
-                        } else if (game.checkPlayer(e.getPlayer()) && freezer.getPlayer() != null && freezer.getPlayer().isFreezing() && freezer.getPlayer().getFrozenPercentage() < 100 && !game.getPlayers().get(e.getPlayer().getUniqueId()).isKnocked()) {
+                        } else if (!game.checkBeast(e.getPlayer()) && game.checkPlayer(e.getPlayer()) && freezer.getPlayer() != null && freezer.getPlayer().isFreezing() && freezer.getPlayer().getFrozenPercentage() < 100 && !p.isKnocked()) {
                             // Caso: um jogador quer resgatar alguém que está congelando.
+
+
                             Player playerInFreezer = freezer.getPlayer().getPlayer();
                             playerInFreezer.getPlayer().setCollidable(true);
                             playerInFreezer.teleport(freezer.getLocations().getButtonLocation());
+
+                            getLogger().info(playerInFreezer.getName() + " is now not freezing");
 
                             ItemStack tracker = game.getFreezerTrackers().get(playerInFreezer.getUniqueId());
 
